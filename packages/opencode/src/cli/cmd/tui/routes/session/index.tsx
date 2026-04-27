@@ -78,6 +78,7 @@ import { useExit } from "../../context/exit"
 import { Filesystem } from "@/util/filesystem"
 import { Global } from "@opencode-ai/core/global"
 import { PermissionPrompt } from "./permission"
+import * as Sound from "@tui/util/sound"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
@@ -252,6 +253,11 @@ export function Session() {
   const keybind = useKeybind()
   const dialog = useDialog()
   const renderer = useRenderer()
+
+  event.on("session.idle", (evt) => {
+    if (evt.properties.sessionID !== route.sessionID) return
+    Sound.pulse()
+  })
 
   event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
