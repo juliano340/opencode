@@ -43,6 +43,8 @@ import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceCreate, restoreWorkspaceSession } from "../dialog-workspace-create"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "@tui/context/args"
+import { startRecording, type VoiceHandle } from "@/cli/audio/recorder"
+import { DialogVoice } from "@tui/component/dialog-voice"
 
 export type PromptProps = {
   sessionID?: string
@@ -174,6 +176,26 @@ export function Prompt(props: PromptProps) {
   const [auto, setAuto] = createSignal<AutocompleteRef>()
   const currentProviderLabel = createMemo(() => local.model.parsed().provider)
   const hasRightContent = createMemo(() => Boolean(props.right))
+  const [voiceState, setVoiceState] = createSignal<"idle" | "recording" | "transcribing">("idle")
+  const [recVisible, setRecVisible] = createSignal(true)
+  let voiceHandle: VoiceHandle | undefined
+  let recInterval: ReturnType<typeof setInterval> | undefined
+
+  createEffect(() => {
+    if (voiceState() === "recording") {
+      recInterval = setInterval(() => setRecVisible((v) => !v), 500)
+    } else {
+      if (recInterval) clearInterval(recInterval)
+      recInterval = undefined
+      setRecVisible(true)
+    }
+  })
+
+  onCleanup(() => {
+    voiceHandle?.abort()
+    voiceHandle = undefined
+    if (recInterval) clearInterval(recInterval)
+  })
 
   function promptModelWarning() {
     toast.show({
@@ -1138,6 +1160,40 @@ export function Prompt(props: PromptProps) {
                     return
                   }
                 }
+                if (keybind.match("input_voice_config", e)) {
+                  e.preventDefault()
+                  dialog.replace(() => <DialogVoice />)
+                  return
+                }
+                if (keybind.match("input_voice", e)) {
+                  e.preventDefault()
+                  if (voiceState() === "idle") {
+                    setVoiceState("recording")
+                    try {
+                      voiceHandle = await startRecording(sync.data.config.voice?.groq_api_key)
+                    } catch (err) {
+                      setVoiceState("idle")
+                      const msg = err instanceof Error ? err.message : String(err)
+                      toast.show({ message: `Voice: ${msg}`, variant: "error" })
+                    }
+                  } else if (voiceState() === "recording" && voiceHandle) {
+                    setVoiceState("transcribing")
+                    const handle = voiceHandle
+                    voiceHandle = undefined
+                    try {
+                      const text = await handle.stop()
+                      if (text) {
+                        input.insertText(text)
+                        setStore("prompt", "input", input.plainText)
+                      }
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : "Transcription failed"
+                      toast.show({ message: `Voice: ${msg}`, variant: "error" })
+                    }
+                    setVoiceState("idle")
+                  }
+                  return
+                }
                 if (e.name === "!" && input.visualCursor.offset === 0) {
                   setStore("placeholder", randomIndex(shell().length))
                   setStore("mode", "shell")
@@ -1313,11 +1369,18 @@ export function Prompt(props: PromptProps) {
                   )}
                 </Show>
               </box>
-              <Show when={hasRightContent()}>
-                <box flexDirection="row" gap={1} alignItems="center">
-                  {props.right}
-                </box>
-              </Show>
+              <box flexDirection="row" gap={1} alignItems="center">
+                <Show when={voiceState() !== "idle"}>
+                  <text fg={voiceState() === "recording" ? theme.warning : theme.textMuted}>
+                    {voiceState() === "recording" ? (recVisible() ? "● REC" : "○ REC") : "◌ transcribing..."}
+                  </text>
+                </Show>
+                <Show when={hasRightContent()}>
+                  <box flexDirection="row" gap={1} alignItems="center">
+                    {props.right}
+                  </box>
+                </Show>
+              </box>
             </box>
           </box>
         </box>
