@@ -50,7 +50,7 @@ export function DialogVoice() {
         }
         if (!key) return
         setBusy(true)
-        const result = await sdk.client.config.update({ config: { voice: { groq_api_key: key } } })
+        const result = await sdk.client.global.config.update({ config: { voice: { groq_api_key: key } } })
         setBusy(false)
         if (result.error) {
           toast.show({ message: "Voice: failed to persist key to config", variant: "error" })
