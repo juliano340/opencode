@@ -8,10 +8,12 @@ import pulseA from "../asset/pulse-a.wav" with { type: "file" }
 import pulseB from "../asset/pulse-b.wav" with { type: "file" }
 import pulseC from "../asset/pulse-c.wav" with { type: "file" }
 import charge from "../asset/charge.wav" with { type: "file" }
+import agentDone from "../../../../../../ui/src/assets/audio/staplebops-01.aac" with { type: "file" }
 
 const FILE = [pulseA, pulseB, pulseC]
 
 const HUM = charge
+const AGENT = agentDone
 const DIR = join(tmpdir(), "opencode-sfx")
 
 const LIST = [
@@ -47,7 +49,7 @@ let item: Player | null | undefined
 let kind: Kind | null | undefined
 let proc: Process.Child | undefined
 let tail: ReturnType<typeof setTimeout> | undefined
-let cache: Promise<{ hum: string; pulse: string[] }> | undefined
+let cache: Promise<{ agent: string; hum: string; pulse: string[] }> | undefined
 let seq = 0
 let shot = 0
 
@@ -71,7 +73,11 @@ async function file(path: string) {
 }
 
 function asset() {
-  cache ??= Promise.all([file(HUM), Promise.all(FILE.map(file))]).then(([hum, pulse]) => ({ hum, pulse }))
+  cache ??= Promise.all([file(AGENT), file(HUM), Promise.all(FILE.map(file))]).then(([agent, hum, pulse]) => ({
+    agent,
+    hum,
+    pulse,
+  }))
   return cache
 }
 
@@ -146,6 +152,13 @@ export function pulse(scale = 1) {
   const index = shot++ % FILE.length
   void asset()
     .then(({ pulse }) => play(pulse[index], 0.26 + 0.14 * scale))
+    .catch(() => undefined)
+}
+
+export function agent() {
+  stop(140)
+  void asset()
+    .then(({ agent }) => play(agent, 0.35))
     .catch(() => undefined)
 }
 

@@ -254,7 +254,7 @@ export function Session() {
 
   event.on("session.idle", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
-    Sound.pulse()
+    Sound.agent()
   })
 
   event.on("session.status", (evt) => {
