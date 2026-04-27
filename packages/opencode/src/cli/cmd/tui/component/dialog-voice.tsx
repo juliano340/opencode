@@ -4,6 +4,7 @@ import { useSync } from "@tui/context/sync"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useTheme } from "@tui/context/theme"
 import { useToast } from "@tui/ui/toast"
+import { createSignal } from "solid-js"
 
 function maskKey(key: string): string {
   if (!key) return ""
@@ -17,6 +18,7 @@ export function DialogVoice() {
   const sync = useSync()
   const { theme } = useTheme()
   const toast = useToast()
+  const [busy, setBusy] = createSignal(false)
 
   const savedKey = sync.data.config.voice?.groq_api_key ?? process.env.GROQ_API_KEY ?? ""
   const masked = maskKey(savedKey)
@@ -24,6 +26,8 @@ export function DialogVoice() {
   return (
     <DialogPrompt
       title="Voice — Groq API Key"
+      busy={busy()}
+      busyText="Saving key..."
       placeholder={masked ? "Enter new key to replace..." : "gsk_..."}
       description={
         <box gap={1}>
@@ -37,7 +41,7 @@ export function DialogVoice() {
           ) : undefined}
         </box>
       }
-      onConfirm={(value) => {
+      onConfirm={async (value) => {
         const key = value.trim()
         // If blank and a key already exists, just close
         if (!key && savedKey) {
@@ -45,16 +49,15 @@ export function DialogVoice() {
           return
         }
         if (!key) return
-        // Available immediately in current session
-        process.env.GROQ_API_KEY = key
-        // Persist to config for future sessions
-        fetch(`${sdk.url}/config`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ voice: { groq_api_key: key } }),
-        }).catch(() => {
+        setBusy(true)
+        const result = await sdk.client.config.update({ config: { voice: { groq_api_key: key } } })
+        setBusy(false)
+        if (result.error) {
           toast.show({ message: "Voice: failed to persist key to config", variant: "error" })
-        })
+          return
+        }
+        process.env.GROQ_API_KEY = key
+        sync.set("config", "voice", { groq_api_key: key })
         dialog.clear()
       }}
     />
