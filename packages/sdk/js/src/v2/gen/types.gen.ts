@@ -1672,6 +1672,15 @@ export type Config = {
      */
     reserved?: number
   }
+  /**
+   * Voice input configuration
+   */
+  voice?: {
+    /**
+     * Groq API key for voice transcription (get a free key at console.groq.com)
+     */
+    groq_api_key?: string
+  }
   experimental?: {
     disable_paste_summary?: boolean
     /**
