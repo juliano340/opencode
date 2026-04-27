@@ -30,4 +30,3 @@ logs/
 *.bun-build
 tsconfig.tsbuildinfo
 .claude/ 
-.opencode/
