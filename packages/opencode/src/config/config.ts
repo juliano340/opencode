@@ -235,6 +235,13 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  voice: Schema.optional(
+    Schema.Struct({
+      groq_api_key: Schema.optional(Schema.String).annotate({
+        description: "Groq API key for voice transcription (get a free key at console.groq.com)",
+      }),
+    }),
+  ).annotate({ description: "Voice input configuration" }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),
