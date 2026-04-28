@@ -329,7 +329,7 @@ function writable(info: Info) {
 }
 
 function writableGlobal(info: Info) {
-  const next = writable(info)
+  const { plugin_origins: _plugin_origins, voice: _voice, ...next } = info
   // When a user changes config from a value back to default in the Desktop app, we don't want to leave a blank `"shell": "",` key
   if ("shell" in next && next.shell === "") return { ...next, shell: undefined }
   return next
@@ -415,6 +415,35 @@ export const layer = Layer.effect(
             })
             .catch(() => {}),
         )
+      }
+
+      // Migrate voice from main config files to separate voice.json
+      // This ensures compatibility with versions that don't recognize the voice key
+      if (result.voice) {
+        const voiceFile = path.join(Global.Path.config, "voice.json")
+        yield* fs.writeFileString(voiceFile, JSON.stringify(result.voice, null, 2)).pipe(Effect.orDie)
+
+        for (const name of ["config.json", "opencode.json", "opencode.jsonc"]) {
+          const fp = path.join(Global.Path.config, name)
+          const text = yield* readConfigFile(fp)
+          if (text) {
+            const parsed = ConfigParse.jsonc(text, fp)
+            if (isRecord(parsed) && "voice" in parsed) {
+              const { voice: _v, ...rest } = parsed
+              yield* fs.writeFileString(fp, JSON.stringify(rest, null, 2)).pipe(Effect.orDie)
+            }
+          }
+        }
+      }
+
+      // Load voice config from separate file (persisted independently of main config)
+      const voiceFile = path.join(Global.Path.config, "voice.json")
+      const voiceText = yield* readConfigFile(voiceFile)
+      if (voiceText) {
+        const voice = ConfigParse.jsonc(voiceText, voiceFile)
+        if (isRecord(voice) && Object.keys(voice).length > 0) {
+          result.voice = voice
+        }
       }
 
       return result
@@ -765,21 +794,32 @@ export const layer = Layer.effect(
       const before = (yield* readConfigFile(file)) ?? "{}"
       const patch = writableGlobal(config)
 
+      const voiceSerialized = config.voice ? JSON.stringify(config.voice, null, 2) : undefined
+      const voiceChanged = voiceSerialized
+        ? voiceSerialized !== ((yield* readConfigFile(path.join(Global.Path.config, "voice.json"))) ?? "")
+        : false
+      if (voiceSerialized) {
+        yield* fs.writeFileString(path.join(Global.Path.config, "voice.json"), voiceSerialized).pipe(Effect.orDie)
+      }
+
       let next: Info
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
         const existing = ConfigParse.effectSchema(Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeDeep(writable(existing), patch)
+        const { voice: _existingVoice, ...existingWithoutVoice } = writable(existing)
+        const merged = mergeDeep(existingWithoutVoice, patch)
         const serialized = JSON.stringify(merged, null, 2)
-        changed = serialized !== before
+        changed = serialized !== before || voiceChanged
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
         next = merged
       } else {
-        const updated = patchJsonc(before, patch)
+        const updated = patchJsonc(patchJsonc(before, { voice: undefined }), patch)
         next = ConfigParse.effectSchema(Info, ConfigParse.jsonc(updated, file), file)
-        changed = updated !== before
+        changed = updated !== before || voiceChanged
         if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)
       }
+
+      if (config.voice) next = { ...next, voice: config.voice }
 
       // Only tear down running instances if the config actually changed.
       if (changed) yield* invalidate()
